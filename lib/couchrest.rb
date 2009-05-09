@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 require "rubygems"
-gem 'json'
+gem 'json_pure'
 require 'json'
 gem 'rest-client'
 require 'rest_client'
