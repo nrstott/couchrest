@@ -115,7 +115,23 @@ module CouchRest
     # Check if a resource is valid in a given context
     #
     def valid?(context = :default)
-      self.class.validators.execute(context, self)
+      result = self.class.validators.execute(context, self)
+
+      arrayproperties = self.class.properties.select { |property| property.casted and property.type.respond_to?(:each) }
+      arrayproperties.each do |property|
+        model_type = property.type.first
+        if self.respond_to?(property.name)
+          val = self.send(property.name)
+        else
+          val = nil
+        end
+        next unless val.respond_to?(:each)
+        val.each do |model|
+          result = result && model.valid?
+        end
+      end
+
+      result
     end
 
     # Begin a recursive walk of the model checking validity

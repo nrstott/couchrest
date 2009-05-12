@@ -120,6 +120,7 @@ describe CouchRest::CastedModel do
     it "should fail because name is not present" do
       toy = CatToy.new
       @cat.toys.push(toy)
+      @cat.all_valid?
       @cat.save.should be_false
     end
   end

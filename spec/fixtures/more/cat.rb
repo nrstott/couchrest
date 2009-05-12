@@ -13,6 +13,7 @@ class CatToy < Hash
   include ::CouchRest::Validation
 
   property :name
+  property :price
 
   validates_present :name
 end
