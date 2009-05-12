@@ -10,6 +10,7 @@ describe "ExtendedDocument" do
     property :preset,       :default => {:right => 10, :top_align => false}
     property :set_by_proc,  :default => Proc.new{Time.now},       :cast_as => 'Time'
     property :tags,         :default => []
+    property :false_default, :default => false
     property :name
     timestamps!
   end
@@ -51,6 +52,19 @@ describe "ExtendedDocument" do
     end
     property :preset, :default => 'value'
     property :has_no_default
+  end
+
+  class WithGetterAndSetterMethods < CouchRest::ExtendedDocument
+    use_database TEST_SERVER.default_database
+    
+    property :other_arg
+    def arg
+      other_arg
+    end
+
+    def arg=(value)
+      self.other_arg = "foo-#{value}"
+    end
   end
   
   before(:each) do
@@ -143,6 +157,11 @@ describe "ExtendedDocument" do
     it "should work with a default empty array" do
       obj = WithDefaultValues.new(:tags => ['spec'])
       obj.tags.should == ['spec']
+    end
+
+    it "should work with a default value of false" do
+      obj = WithDefaultValues.new
+      obj.false_default.should == false
     end
   end
   
@@ -504,6 +523,15 @@ describe "ExtendedDocument" do
         @doc.run_before_update.should be_true
       end
       
+    end
+  end
+
+  describe "getter and setter methods" do
+    it "should try to call the arg= method before setting :arg in the hash" do
+      @doc = WithGetterAndSetterMethods.new(:arg => "foo")
+      @doc['arg'].should be_nil
+      @doc[:arg].should be_nil
+      @doc.other_arg.should == "foo-foo"
     end
   end
 end
