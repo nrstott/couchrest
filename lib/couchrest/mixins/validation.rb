@@ -116,21 +116,20 @@ module CouchRest
     #
     def valid?(context = :default)
       result = self.class.validators.execute(context, self)
-
-      arrayproperties = self.class.properties.select { |property| property.casted and property.type.respond_to?(:each) }
-      arrayproperties.each do |property|
-        model_type = property.type.first
-        if self.respond_to?(property.name)
-          val = self.send(property.name)
-        else
-          val = nil
-        end
-        next unless val.respond_to?(:each)
-        val.each do |model|
-          result = result && model.valid?
+      result && validate_casted_arrays
+    end
+    
+    # checking on casted objects
+    def validate_casted_arrays
+      result = true
+      array_casted_properties = self.class.properties.select { |property| property.casted && property.type.instance_of?(Array) }
+      array_casted_properties.each do |property|
+        casted_values = self.send(property.name)
+        next unless casted_values.respond_to?(:each) && casted_values.first.respond_to?(:valid?)
+        casted_values.each do |value|
+          result = (result && value.valid?) if value.respond_to?(:valid?)
         end
       end
-
       result
     end
 

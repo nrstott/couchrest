@@ -13,7 +13,10 @@ class CatToy < Hash
   include ::CouchRest::Validation
 
   property :name
+<<<<<<< HEAD:spec/fixtures/more/cat.rb
   property :price
+=======
+>>>>>>> a4e6713aeb04721604553bb03475b11912a6e1ff:spec/fixtures/more/cat.rb
 
   validates_present :name
 end
