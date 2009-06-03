@@ -17,14 +17,14 @@ module CouchRest
       end
       
       def apply_defaults
-        return unless self.respond_to?(:new_document?) && new_document?
+        return if self.respond_to?(:new_document?) && (new_document? == false)
         return unless self.class.respond_to?(:properties) 
         return if self.class.properties.empty?
         # TODO: cache the default object
         self.class.properties.each do |property|
           key = property.name.to_s
-          # let's make sure we have a default and we can assign the value
-          if !property.default.nil? && (self.respond_to?("#{key}=") || self.key?(key))
+          # let's make sure we have a default
+          if property.default
               if property.default.class == Proc
                 self[key] = property.default.call
               else
@@ -39,9 +39,10 @@ module CouchRest
         self.class.properties.each do |property|
           next unless property.casted
           key = self.has_key?(property.name) ? property.name : property.name.to_sym
+          # Don't cast the property unless it has a value
+          next unless self[key]
           target = property.type
           if target.is_a?(Array)
-            next unless self[key]
             klass = ::CouchRest.constantize(target[0])
             self[property.name] = self[key].collect do |value|
               # Auto parse Time objects
@@ -56,12 +57,7 @@ module CouchRest
             else
               # Let people use :send as a Time parse arg
               klass = ::CouchRest.constantize(target)
-              # I'm not convince we should or should not create a new instance if we are casting a doc/extended doc without default value and nothing was passed
-              # unless (property.casted && 
-              #   (klass.superclass == CouchRest::ExtendedDocument || klass.superclass == CouchRest::Document) && 
-              #     (self[key].nil? || property.default.nil?))
-              klass.send(property.init_method, self[key])
-              #end
+              klass.send(property.init_method, self[key].dup)
             end
             self[property.name].casted_by = self if self[property.name].respond_to?(:casted_by)
           end

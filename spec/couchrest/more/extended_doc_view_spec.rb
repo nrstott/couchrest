@@ -100,7 +100,8 @@ describe "ExtendedDocument views" do
 
   describe "a ducktype view" do
     before(:all) do
-      @id = TEST_SERVER.default_database.save_doc({:dept => true})['id']
+      reset_test_db!
+      @id = DB.save_doc({:dept => true})['id']
     end
     it "should setup" do
       duck = Course.get(@id) # from a different db
@@ -111,7 +112,7 @@ describe "ExtendedDocument views" do
       @doc = Course.design_doc
       @doc["views"]["by_dept"]["map"].should_not include("couchrest")
     end
-    it "should not look for class" do |variable|
+    it "should not look for class" do
       @as = Course.by_dept
       @as[0]['_id'].should == @id
     end
@@ -120,7 +121,7 @@ describe "ExtendedDocument views" do
   describe "a model class not tied to a database" do
     before(:all) do
       reset_test_db!
-      @db = TEST_SERVER.default_database
+      @db = DB
       %w{aaa bbb ddd eee}.each do |title|
         u = Unattached.new(:title => title)
         u.database = @db
@@ -183,21 +184,23 @@ describe "ExtendedDocument views" do
     it "should barf on all_design_doc_versions if no database given" do
       lambda{Unattached.all_design_doc_versions}.should raise_error
     end
-    it "should clean up design docs left around on specific database" do
-      Unattached.by_title :database=>@db
-      Unattached.all_design_doc_versions(@db)["rows"].length.should == 1
+    it "should be able to cleanup the db/bump the revision number" do
+      # if the previous specs were not run, the model_design_doc will be blank
+      Unattached.use_database DB
       Unattached.view_by :questions
-      Unattached.by_questions :database=>@db
-      Unattached.all_design_doc_versions(@db)["rows"].length.should == 2
+      Unattached.by_questions(:database => @db)
+      original_revision = Unattached.model_design_doc(@db)['_rev']
       Unattached.cleanup_design_docs!(@db)
-      Unattached.all_design_doc_versions(@db)["rows"].length.should == 1
+      Unattached.model_design_doc(@db)['_rev'].should_not == original_revision
     end
   end
 
   describe "class proxy" do
     before(:all) do
       reset_test_db!
-      @us = Unattached.on(TEST_SERVER.default_database)
+      # setup the class default doc to save the design doc
+      Unattached.use_database DB
+      @us = Unattached.on(DB)
       %w{aaa bbb ddd eee}.each do |title|
         u = @us.new(:title => title)
         u.save
@@ -246,18 +249,15 @@ describe "ExtendedDocument views" do
     end
     it "should clean up design docs left around on specific database" do
       @us.by_title
-      @us.all_design_doc_versions["rows"].length.should == 1
+      original_id = @us.model_design_doc['_rev']
       Unattached.view_by :professor
       @us.by_professor
-      @us.all_design_doc_versions["rows"].length.should == 2
-      @us.cleanup_design_docs!
-      @us.all_design_doc_versions["rows"].length.should == 1
+      @us.model_design_doc['_rev'].should_not == original_id
     end
   end
 
   describe "a model with a compound key view" do
     before(:all) do
-      Article.design_doc_fresh = false
       Article.by_user_id_and_date.each{|a| a.destroy(true)}
       Article.database.bulk_delete
       written_at = Time.now - 24 * 3600 * 7
@@ -321,6 +321,7 @@ describe "ExtendedDocument views" do
     before(:each) do
       reset_test_db!
       Article.by_date
+      @original_doc_rev = Article.model_design_doc['_rev']
       @design_docs = Article.database.documents :startkey => "_design/", :endkey => "_design/\u9999"
     end
     it "should not create a design doc on view definition" do
@@ -332,24 +333,9 @@ describe "ExtendedDocument views" do
       ddocs = Article.all_design_doc_versions["rows"].length
       Article.view_by :updated_at
       Article.by_updated_at
-      Article.all_design_doc_versions["rows"].length.should == ddocs + 1
+      @original_doc_rev.should_not == Article.model_design_doc['_rev']
       Article.design_doc["views"].keys.should include("by_updated_at")
     end
   end
-
-  describe "with a lot of designs left around" do
-    before(:each) do
-      reset_test_db!
-      Article.by_date
-      Article.view_by :field
-      Article.by_field
-    end
-    it "should clean them up" do
-      Article.view_by :stream
-      Article.by_stream
-      Article.all_design_doc_versions["rows"].length.should > 1
-      Article.cleanup_design_docs!
-      Article.all_design_doc_versions["rows"].length.should == 1
-    end
-  end
+  
 end

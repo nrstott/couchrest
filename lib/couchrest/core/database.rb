@@ -142,8 +142,14 @@ module CouchRest
         bulk_save
       end
       result = if doc['_id']
-        slug = escape_docid(doc['_id'])        
-        CouchRest.put "#{@uri}/#{slug}", doc
+        slug = escape_docid(doc['_id'])
+        begin     
+          CouchRest.put "#{@uri}/#{slug}", doc
+        rescue RestClient::ResourceNotFound
+          p "resource not found when saving even tho an id was passed"
+          slug = doc['_id'] = @server.next_uuid
+          CouchRest.put "#{@uri}/#{slug}", doc
+        end
       else
         begin
           slug = doc['_id'] = @server.next_uuid
@@ -265,10 +271,15 @@ module CouchRest
     # DELETE the database itself. This is not undoable and could be rather
     # catastrophic. Use with care!
     def delete!
+      clear_extended_doc_fresh_cache
       CouchRest.delete @uri
     end
 
     private
+    
+    def clear_extended_doc_fresh_cache
+      ::CouchRest::ExtendedDocument.subclasses.each{|klass| klass.design_doc_fresh = false if klass.respond_to?(:design_doc_fresh=) }
+    end
     
     def uri_for_attachment(doc, name)
       if doc.is_a?(String)

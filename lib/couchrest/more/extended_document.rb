@@ -1,6 +1,7 @@
 require 'mime/types'
 require File.join(File.dirname(__FILE__), "property")
 require File.join(File.dirname(__FILE__), '..', 'mixins', 'extended_document_mixins')
+require "enumerator"
 
 module CouchRest
   
@@ -12,6 +13,10 @@ module CouchRest
     include CouchRest::Mixins::DesignDoc
     include CouchRest::Mixins::ExtendedAttachments
     include CouchRest::Mixins::ClassProxy
+
+   def self.subclasses
+     @subclasses ||= []
+   end
     
     def self.inherited(subklass)
       subklass.send(:include, CouchRest::Mixins::Properties)
@@ -20,6 +25,7 @@ module CouchRest
           subklass.properties = self.properties.dup
         end
       EOS
+      subclasses << subklass
     end
     
     # Accessors
@@ -44,6 +50,8 @@ module CouchRest
         self['couchrest-type'] = self.class.to_s
       end
     end
+    
+
     
     
     # Automatically set <tt>updated_at</tt> and <tt>created_at</tt> fields

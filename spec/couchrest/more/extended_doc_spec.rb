@@ -10,7 +10,7 @@ describe "ExtendedDocument" do
     property :preset,       :default => {:right => 10, :top_align => false}
     property :set_by_proc,  :default => Proc.new{Time.now},       :cast_as => 'Time'
     property :tags,         :default => []
-    property :false_default, :default => false
+    property :read_only_with_default, :default => 'generic', :read_only => true
     property :name
     timestamps!
   end
@@ -158,10 +158,10 @@ describe "ExtendedDocument" do
       obj = WithDefaultValues.new(:tags => ['spec'])
       obj.tags.should == ['spec']
     end
-
-    it "should work with a default value of false" do
+    
+    it "should set default value of read-only property" do
       obj = WithDefaultValues.new
-      obj.false_default.should == false
+      obj.read_only_with_default.should == 'generic'
     end
   end
   
@@ -224,6 +224,7 @@ describe "ExtendedDocument" do
   
   describe "finding all instances of a model" do
     before(:all) do
+      WithTemplateAndUniqueID.design_doc_fresh = false
       WithTemplateAndUniqueID.all.map{|o| o.destroy(true)}
       WithTemplateAndUniqueID.database.bulk_delete
       WithTemplateAndUniqueID.new('important-field' => '1').save
@@ -241,10 +242,30 @@ describe "ExtendedDocument" do
       rs.length.should == 4
     end
   end
-
+  
+  describe "counting all instances of a model" do
+    before(:each) do
+      @db = reset_test_db!
+      WithTemplateAndUniqueID.design_doc_fresh = false
+    end
+    
+    it ".count should return 0 if there are no docuemtns" do
+      WithTemplateAndUniqueID.count.should == 0
+    end
+    
+    it ".count should return the number of documents" do
+      WithTemplateAndUniqueID.new('important-field' => '1').save
+      WithTemplateAndUniqueID.new('important-field' => '2').save
+      WithTemplateAndUniqueID.new('important-field' => '3').save
+      
+      WithTemplateAndUniqueID.count.should == 3
+    end
+  end
+  
   describe "finding the first instance of a model" do
     before(:each) do      
       @db = reset_test_db!
+      WithTemplateAndUniqueID.design_doc_fresh = false
       WithTemplateAndUniqueID.new('important-field' => '1').save
       WithTemplateAndUniqueID.new('important-field' => '2').save
       WithTemplateAndUniqueID.new('important-field' => '3').save
