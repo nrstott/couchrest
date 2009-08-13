@@ -28,7 +28,7 @@ require 'couchrest/monkeypatches'
 
 # = CouchDB, close to the metal
 module CouchRest
-  VERSION    = '0.29' unless self.const_defined?("VERSION")
+  VERSION    = '0.33' unless self.const_defined?("VERSION")
   
   autoload :Server,       'couchrest/core/server'
   autoload :Database,     'couchrest/core/database'
@@ -45,7 +45,14 @@ module CouchRest
   autoload :ExtendedDocument,     'couchrest/more/extended_document'
   autoload :CastedModel,          'couchrest/more/casted_model'
   
+  require File.join(File.dirname(__FILE__), 'couchrest', 'core', 'rest_api')
+  require File.join(File.dirname(__FILE__), 'couchrest', 'core', 'http_abstraction')
   require File.join(File.dirname(__FILE__), 'couchrest', 'mixins')
+  require File.join(File.dirname(__FILE__), 'couchrest', 'support', 'rails') if defined?(Rails)
+
+  # we extend CouchRest with the RestAPI module which gives us acess to
+  # the get, post, put, delete and copy
+  CouchRest.extend(::RestAPI)
   
   # The CouchRest module methods handle the basic JSON serialization 
   # and deserialization, as well as query parameters. The module also includes
@@ -118,9 +125,9 @@ module CouchRest
       }
     end
 
-    # set proxy for RestClient to use
+    # set proxy to use
     def proxy url
-      RestClient.proxy = url
+      HttpAbstraction.proxy = url
     end
 
     # ensure that a database exists
@@ -138,52 +145,6 @@ module CouchRest
       cr.database(parsed[:database])
     end
     
-    def put(uri, doc = nil)
-      payload = doc.to_json if doc
-      begin
-        JSON.parse(RestClient.put(uri, payload))
-      rescue Exception => e
-        if $DEBUG
-          raise "Error while sending a PUT request #{uri}\npayload: #{payload.inspect}\n#{e}"
-        else
-          raise e
-        end
-      end
-    end
-
-    def get(uri)
-      begin
-        JSON.parse(RestClient.get(uri), :max_nesting => false)
-      rescue => e
-        if $DEBUG
-          raise "Error while sending a GET request #{uri}\n: #{e}"
-        else
-          raise e
-        end
-      end
-    end
-  
-    def post uri, doc = nil
-      payload = doc.to_json if doc
-      begin
-        JSON.parse(RestClient.post(uri, payload))
-      rescue Exception => e
-        if $DEBUG
-          raise "Error while sending a POST request #{uri}\npayload: #{payload.inspect}\n#{e}"
-        else
-          raise e
-        end
-      end
-    end
-  
-    def delete uri
-      JSON.parse(RestClient.delete(uri))
-    end
-    
-    def copy uri, destination
-      JSON.parse(RestClient.copy(uri, {'Destination' => destination}))
-    end
-  
     def paramify_url url, params = {}
       if params && !params.empty?
         query = params.collect do |k,v|

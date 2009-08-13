@@ -1,8 +1,10 @@
-require File.join(File.dirname(__FILE__), '..', '..', 'spec_helper')
+require File.expand_path('../../../spec_helper', __FILE__)
+require File.join(FIXTURE_PATH, 'more', 'person')
 require File.join(FIXTURE_PATH, 'more', 'card')
 require File.join(FIXTURE_PATH, 'more', 'invoice')
 require File.join(FIXTURE_PATH, 'more', 'service')
 require File.join(FIXTURE_PATH, 'more', 'event')
+require File.join(FIXTURE_PATH, 'more', 'cat')
 
 
 describe "ExtendedDocument properties" do
@@ -34,6 +36,15 @@ describe "ExtendedDocument properties" do
     @card.last_name = "Aimonetti"
     @card.family_name.should == "Aimonetti"
     @card.family_name.should == @card.last_name
+  end
+  
+  it "should let you use an alias for a casted attribute" do
+    @card.cast_alias = Person.new(:name => "Aimonetti")
+    @card.cast_alias.name.should == "Aimonetti"
+    @card.calias.name.should == "Aimonetti"
+    card = Card.new(:first_name => "matt", :cast_alias => {:name => "Aimonetti"})
+    card.cast_alias.name.should == "Aimonetti"
+    card.calias.name.should == "Aimonetti"
   end
   
   it "should be auto timestamped" do
@@ -84,7 +95,7 @@ describe "ExtendedDocument properties" do
       @invoice.location = nil
       @invoice.should_not be_valid
       @invoice.save.should be_false
-      @invoice.should be_new_document
+      @invoice.should be_new
     end
   end
   
@@ -131,6 +142,119 @@ describe "ExtendedDocument properties" do
         @event['occurs_at'].should be_an_instance_of(Time)
       end
     end
+    
+    describe "casting to Float object" do
+      class RootBeerFloat < CouchRest::ExtendedDocument
+        use_database DB
+        property :price, :cast_as => 'Float'
+      end
+      
+      it "should convert a string into a float if casted as so" do
+        RootBeerFloat.new(:price => '12.50').price.should == 12.50
+        RootBeerFloat.new(:price => '9').price.should == 9.0
+        RootBeerFloat.new(:price => '-9').price.should == -9.0
+      end
+      
+      it "should not convert a string if it's not a string that can be cast as a float" do
+        RootBeerFloat.new(:price => 'test').price.should == 'test'
+      end
+      
+      it "should work fine when a float is being passed" do
+        RootBeerFloat.new(:price => 9.99).price.should == 9.99
+      end
+    end
+    
+    describe "casting to a boolean value" do
+      class RootBeerFloat < CouchRest::ExtendedDocument
+        use_database DB
+        property :tasty, :cast_as => :boolean
+      end
+
+      it "should add an accessor with a '?' for boolean attributes that returns true or false" do
+        RootBeerFloat.new(:tasty => true).tasty?.should == true
+        RootBeerFloat.new(:tasty => 'you bet').tasty?.should == true
+        RootBeerFloat.new(:tasty => 123).tasty?.should == true
+
+        RootBeerFloat.new(:tasty => false).tasty?.should == false
+        RootBeerFloat.new(:tasty => 'false').tasty?.should == false
+        RootBeerFloat.new(:tasty => 'FaLsE').tasty?.should == false
+        RootBeerFloat.new(:tasty => nil).tasty?.should == false
+      end
+
+      it "should return the real value when the default accessor is used" do
+        RootBeerFloat.new(:tasty => true).tasty.should == true
+        RootBeerFloat.new(:tasty => 'you bet').tasty.should == 'you bet'
+        RootBeerFloat.new(:tasty => 123).tasty.should == 123
+        RootBeerFloat.new(:tasty => 'false').tasty.should == 'false'
+        RootBeerFloat.new(:tasty => false).tasty.should == false
+        RootBeerFloat.new(:tasty => nil).tasty.should == nil
+      end
+    end
+
+  end
+end
+
+describe "a newly created casted model" do
+  before(:each) do
+    reset_test_db!
+    @cat = Cat.new(:name => 'Toonces')
+    @squeaky_mouse = CatToy.new(:name => 'Squeaky')
   end
   
+  describe "assigned assigned to a casted property" do
+    it "should have casted_by set to its parent" do
+      @squeaky_mouse.casted_by.should be_nil
+      @cat.favorite_toy = @squeaky_mouse
+      @squeaky_mouse.casted_by.should === @cat
+    end
+  end
+  
+  describe "appended to a casted collection" do
+    it "should have casted_by set to its parent" do
+      @squeaky_mouse.casted_by.should be_nil
+      @cat.toys << @squeaky_mouse
+      @squeaky_mouse.casted_by.should === @cat
+      @cat.save
+      @cat.toys.first.casted_by.should === @cat
+    end
+  end
+  
+  describe "list assigned to a casted collection" do
+    it "should have casted_by set on all elements" do
+      toy1 = CatToy.new(:name => 'Feather')
+      toy2 = CatToy.new(:name => 'Mouse')
+      @cat.toys = [toy1, toy2]
+      toy1.casted_by.should === @cat
+      toy2.casted_by.should === @cat
+      @cat.save
+      @cat = Cat.get(@cat.id)
+      @cat.toys[0].casted_by.should === @cat
+      @cat.toys[1].casted_by.should === @cat
+    end
+  end
+end
+
+describe "a casted model retrieved from the database" do
+  before(:each) do
+    reset_test_db!
+    @cat = Cat.new(:name => 'Stimpy')
+    @cat.favorite_toy = CatToy.new(:name => 'Stinky')
+    @cat.toys << CatToy.new(:name => 'Feather')
+    @cat.toys << CatToy.new(:name => 'Mouse')
+    @cat.save
+    @cat = Cat.get(@cat.id)
+  end
+  
+  describe "as a casted property" do
+    it "should already be casted_by its parent" do
+      @cat.favorite_toy.casted_by.should === @cat
+    end
+  end
+  
+  describe "from a casted collection" do
+    it "should already be casted_by its parent" do
+      @cat.toys[0].casted_by.should === @cat
+      @cat.toys[1].casted_by.should === @cat
+    end
+  end
 end

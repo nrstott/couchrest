@@ -1,6 +1,7 @@
-require File.dirname(__FILE__) + '/../../spec_helper'
+require File.expand_path("../../../spec_helper", __FILE__)
 require File.join(FIXTURE_PATH, 'more', 'article')
 require File.join(FIXTURE_PATH, 'more', 'course')
+require File.join(FIXTURE_PATH, 'more', 'cat')
 
 
 describe "ExtendedDocument" do
@@ -11,13 +12,17 @@ describe "ExtendedDocument" do
     property :set_by_proc,  :default => Proc.new{Time.now},       :cast_as => 'Time'
     property :tags,         :default => []
     property :read_only_with_default, :default => 'generic', :read_only => true
+    property :default_false, :default => false
     property :name
     timestamps!
   end
   
   class WithCallBacks < CouchRest::ExtendedDocument
+    include ::CouchRest::Validation
     use_database TEST_SERVER.default_database
     property :name
+    property :run_before_validate
+    property :run_after_validate
     property :run_before_save
     property :run_after_save
     property :run_before_create
@@ -25,23 +30,55 @@ describe "ExtendedDocument" do
     property :run_before_update
     property :run_after_update
     
-    save_callback :before do |object| 
+    before_validate do |object|
+      object.run_before_validate = true
+    end
+    after_validate do |object| 
+      object.run_after_validate = true
+    end
+    before_save do |object| 
       object.run_before_save = true
     end
-    save_callback :after do |object| 
+    after_save do |object| 
       object.run_after_save = true
     end
-    create_callback :before do |object| 
+    before_create do |object| 
       object.run_before_create = true
     end
-    create_callback :after do |object| 
+    after_create do |object| 
       object.run_after_create = true
     end
-    update_callback :before do |object| 
+    before_update do |object| 
       object.run_before_update = true
     end
-    update_callback :after do |object| 
+    after_update do |object| 
       object.run_after_update = true
+    end
+    
+    property :run_one
+    property :run_two
+    property :run_three
+    
+    before_save :run_one_method, :run_two_method do |object| 
+      object.run_three = true
+    end
+    def run_one_method
+      self.run_one = true
+    end
+    def run_two_method
+      self.run_two = true
+    end
+    
+    attr_accessor :run_it
+    property :conditional_one
+    property :conditional_two
+    
+    before_save :conditional_one_method, :conditional_two_method, :if => proc { self.run_it }
+    def conditional_one_method
+      self.conditional_one = true
+    end
+    def conditional_two_method
+      self.conditional_two = true
     end
   end
   
@@ -84,15 +121,28 @@ describe "ExtendedDocument" do
   end
   
   describe "a new model" do
-    it "should be a new_record" do
+    it "should be a new document" do
       @obj = Basic.new
       @obj.rev.should be_nil
-      @obj.should be_a_new_record
+      @obj.should be_new
+      @obj.should be_new_document
+      @obj.should be_new_record
     end
-    it "should be a new_document" do
-      @obj = Basic.new
-      @obj.rev.should be_nil
-      @obj.should be_a_new_document
+  end
+  
+  describe "creating a new document" do
+    it "should instantialize and save a document" do
+      article = Article.create(:title => 'my test')
+      article.title.should == 'my test'
+      article.should_not be_new
+    end 
+    
+    it "should trigger the create callbacks" do
+      doc = WithCallBacks.create(:name => 'my other test') 
+      doc.run_before_create.should be_true
+      doc.run_after_create.should be_true
+      doc.run_before_save.should be_true
+      doc.run_after_save.should be_true
     end
   end
   
@@ -107,6 +157,27 @@ describe "ExtendedDocument" do
       @art['title'].should == "big bad danger"
       @art.update_attributes_without_saving('date' => Time.now, :title => "super danger")
       @art['title'].should == "super danger"
+    end
+    it "should silently ignore _id" do
+      @art.update_attributes_without_saving('_id' => 'foobar')
+      @art['_id'].should_not == 'foobar'
+    end
+    it "should silently ignore _rev" do
+      @art.update_attributes_without_saving('_rev' => 'foobar')
+      @art['_rev'].should_not == 'foobar'
+    end
+    it "should silently ignore created_at" do
+      @art.update_attributes_without_saving('created_at' => 'foobar')
+      @art['created_at'].should_not == 'foobar'
+    end
+    it "should silently ignore updated_at" do
+      @art.update_attributes_without_saving('updated_at' => 'foobar')
+      @art['updated_at'].should_not == 'foobar'
+    end
+    it "should also work using attributes= alias" do
+      @art.respond_to?(:attributes=).should be_true
+      @art.attributes = {'date' => Time.now, :title => "something else"}
+      @art['title'].should == "something else"
     end
     
     it "should flip out if an attribute= method is missing" do
@@ -141,6 +212,10 @@ describe "ExtendedDocument" do
   describe "with default" do
     it "should have the default value set at initalization" do
       @obj.preset.should == {:right => 10, :top_align => false}
+    end
+
+    it "should have the default false value explicitly assigned" do
+      @obj.default_false.should == false
     end
     
     it "should automatically call a proc default at initialization" do
@@ -194,6 +269,15 @@ describe "ExtendedDocument" do
     it "should load and instantiate it" do
       foundart = Article.get @art.id
       foundart.title.should == "All About Getting"
+    end
+    
+    it "should return nil if `get` is used and the document doesn't exist" do
+      foundart = Article.get 'matt aimonetti'
+      foundart.should be_nil
+    end                     
+    
+    it "should raise an error if `get!` is used and the document doesn't exist" do
+       lambda{foundart = Article.get!('matt aimonetti')}.should raise_error
     end
   end
 
@@ -389,7 +473,7 @@ describe "ExtendedDocument" do
     end
     
     it "should be a new document" do
-      @art.should be_a_new_document
+      @art.should be_new
       @art.title.should be_nil
     end
     
@@ -486,7 +570,7 @@ describe "ExtendedDocument" do
     end
     it "should make it go away" do
       @dobj.destroy
-      lambda{Basic.get(@dobj.id)}.should raise_error
+      lambda{Basic.get!(@dobj.id)}.should raise_error
     end
   end
   
@@ -497,11 +581,45 @@ describe "ExtendedDocument" do
       @doc = WithCallBacks.new
     end
     
+    
+    describe "validate" do
+      it "should run before_validate before validating" do
+        @doc.run_before_validate.should be_nil
+        @doc.should be_valid
+        @doc.run_before_validate.should be_true
+      end
+      it "should run after_validate after validating" do
+        @doc.run_after_validate.should be_nil
+        @doc.should be_valid
+        @doc.run_after_validate.should be_true
+      end
+    end
     describe "save" do
       it "should run the after filter after saving" do
         @doc.run_after_save.should be_nil
         @doc.save.should be_true
         @doc.run_after_save.should be_true
+      end
+      it "should run the grouped callbacks before saving" do
+        @doc.run_one.should be_nil
+        @doc.run_two.should be_nil
+        @doc.run_three.should be_nil
+        @doc.save.should be_true
+        @doc.run_one.should be_true
+        @doc.run_two.should be_true
+        @doc.run_three.should be_true
+      end
+      it "should not run conditional callbacks" do
+        @doc.run_it = false
+        @doc.save.should be_true
+        @doc.conditional_one.should be_nil
+        @doc.conditional_two.should be_nil
+      end
+      it "should run conditional callbacks" do
+        @doc.run_it = true
+        @doc.save.should be_true
+        @doc.conditional_one.should be_true
+        @doc.conditional_two.should be_true
       end
     end
     describe "create" do
@@ -553,6 +671,51 @@ describe "ExtendedDocument" do
       @doc['arg'].should be_nil
       @doc[:arg].should be_nil
       @doc.other_arg.should == "foo-foo"
+    end
+  end
+  
+  describe "recursive validation on an extended document" do
+    before :each do
+      reset_test_db!
+      @cat = Cat.new(:name => 'Sockington')
+    end
+    
+    it "should not save if a nested casted model is invalid" do
+      @cat.favorite_toy = CatToy.new
+      @cat.should_not be_valid
+      @cat.save.should be_false
+      lambda{@cat.save!}.should raise_error
+    end
+    
+    it "should save when nested casted model is valid" do
+      @cat.favorite_toy = CatToy.new(:name => 'Squeaky')
+      @cat.should be_valid
+      @cat.save.should be_true
+      lambda{@cat.save!}.should_not raise_error
+    end
+    
+    it "should not save when nested collection contains an invalid casted model" do
+      @cat.toys = [CatToy.new(:name => 'Feather'), CatToy.new]
+      @cat.should_not be_valid
+      @cat.save.should be_false
+      lambda{@cat.save!}.should raise_error
+    end
+    
+    it "should save when nested collection contains valid casted models" do
+      @cat.toys = [CatToy.new(:name => 'feather'), CatToy.new(:name => 'ball-o-twine')]
+      @cat.should be_valid
+      @cat.save.should be_true
+      lambda{@cat.save!}.should_not raise_error
+    end
+    
+    it "should not fail if the nested casted model doesn't have validation" do
+      Cat.property :trainer, :cast_as => 'Person'
+      Cat.validates_present :name
+      cat = Cat.new(:name => 'Mr Bigglesworth')
+      cat.trainer = Person.new
+      cat.trainer.validatable?.should be_false
+      cat.should be_valid
+      cat.save.should be_true
     end
   end
 end
